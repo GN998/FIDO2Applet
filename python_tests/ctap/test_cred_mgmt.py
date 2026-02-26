@@ -176,3 +176,76 @@ class CredManagementTestCase(CredManagementBaseTestCase):
         after_cred = cm.enumerate_creds(rp_id_hash=self.rp_id_hash(self.rp_id))[0]
         self.assertEqual(new_id, after_cred[6].get('id'))
         self.assertEqual(new_name, after_cred[6].get('name'))
+
+    def test_rk_overwrite(self):
+        pin_client = self.get_high_level_client(user_interaction=FixedPinUserInteraction(self.pin))
+        self.basic_makecred_params['options'] = {
+            'rk': True
+        }
+        creds = []
+
+        user_id = secrets.token_bytes(30)
+
+        for x in range(5):
+            pin_client.make_credential(
+                self.get_high_level_make_cred_options(
+                    ResidentKeyRequirement.REQUIRED, user_id=user_id
+                )
+            )
+
+            cm = self.get_credential_management()
+            rps = cm.enumerate_rps()
+            self.assertEqual(1, len(rps))
+
+            creds = cm.enumerate_creds(rp_id_hash=self.rp_id_hash(self.rp_id))
+            self.assertEqual(1, len(creds))
+
+    def test_rk_overwrite_multiple_creds(self):
+        pin_client = self.get_high_level_client(user_interaction=FixedPinUserInteraction(self.pin))
+        self.basic_makecred_params['options'] = {
+            'rk': True
+        }
+
+        cm = self.get_credential_management()
+
+        user_id_1 = secrets.token_bytes(30)
+        user_id_2 = secrets.token_bytes(30)
+
+        res_1 = pin_client.make_credential(
+            self.get_high_level_make_cred_options(
+                ResidentKeyRequirement.REQUIRED, user_id=user_id_1
+            )
+        )
+
+        rps = cm.enumerate_rps()
+        self.assertEqual(1, len(rps))
+        creds = cm.enumerate_creds(rp_id_hash=self.rp_id_hash(self.rp_id))
+        self.assertEqual(1, len(creds))
+
+        pin_client.make_credential(
+            self.get_high_level_make_cred_options(
+                ResidentKeyRequirement.REQUIRED, user_id=user_id_2
+            )
+        )
+        rps = cm.enumerate_rps()
+        self.assertEqual(1, len(rps))
+        creds = cm.enumerate_creds(rp_id_hash=self.rp_id_hash(self.rp_id))
+        self.assertEqual(2, len(creds))
+
+        pin_client.get_assertion(self.get_high_level_assertion_opts_from_cred(cred=res_1, rp_id=self.rp_id))
+
+        rps = cm.enumerate_rps()
+        self.assertEqual(1, len(rps))
+        creds = cm.enumerate_creds(rp_id_hash=self.rp_id_hash(self.rp_id))
+        self.assertEqual(2, len(creds))
+
+        pin_client.make_credential(
+            self.get_high_level_make_cred_options(
+                ResidentKeyRequirement.REQUIRED, user_id=user_id_1
+            )
+        )
+
+        rps = cm.enumerate_rps()
+        self.assertEqual(1, len(rps))
+        creds = cm.enumerate_creds(rp_id_hash=self.rp_id_hash(self.rp_id))
+        self.assertEqual(2, len(creds))
