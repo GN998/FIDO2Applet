@@ -14,7 +14,7 @@ public final class FIDO2Applet extends Applet implements ExtendedLength {
     /**
      * The version of this applet in use
      */
-    private static final byte FIRMWARE_VERSION = 0x07;
+    private static final byte FIRMWARE_VERSION = 0x08;
 
     /**
      * The AID to which this applet should respond (ignoring any other AIDs sent to it)
@@ -1014,11 +1014,7 @@ public final class FIDO2Applet extends Applet implements ExtendedLength {
                 } catch (Exception e) {
                     sendErrorByte(apdu, FIDOConstants.CTAP2_ERR_KEY_STORE_FULL);
                 }
-                try {
-                    JCSystem.requestObjectDeletion();
-                } catch (Exception e) {
-                    // Do nothing - waste a tiny amount of memory
-                }
+                attemptToFreeMemory();
 
                 // Re-get available mem here, because we used/freed some
                 availableMem = JCSystem.getAvailableMemory(JCSystem.MEMORY_TYPE_PERSISTENT);
@@ -1040,6 +1036,7 @@ public final class FIDO2Applet extends Applet implements ExtendedLength {
 
             JCSystem.beginTransaction();
             boolean ok = false;
+            boolean overwriteExistingCredential = false;
             try {
                 // Set flag byte first, so encryption stuff below can use it
                 byte effectiveCPLevel = credProtectLevel;
@@ -1057,6 +1054,7 @@ public final class FIDO2Applet extends Applet implements ExtendedLength {
                 } else {
                     // Found a matching RK - overwrite it
                     uniqueRP = residentKeys[targetRKSlot].isUniqueRP();
+                    overwriteExistingCredential = true;
 
                     if (targetRKSlot < (short) (numResidentCredentials - 1)) {
                         // We need to put the credential at the end of the list so it's still the "most recent" one
@@ -1120,6 +1118,10 @@ public final class FIDO2Applet extends Applet implements ExtendedLength {
                     JCSystem.commitTransaction();
                 } else {
                     JCSystem.abortTransaction();
+                }
+
+                if (overwriteExistingCredential) {
+                    attemptToFreeMemory();
                 }
             }
         } else {
@@ -1248,6 +1250,17 @@ public final class FIDO2Applet extends Applet implements ExtendedLength {
         }
 
         doSendResponse(apdu, outputLen);
+    }
+
+    /**
+     * Attempts to release no-longer-referenced memory back to the Javacard OS
+     */
+    private static void attemptToFreeMemory() {
+        try {
+            JCSystem.requestObjectDeletion();
+        } catch (Exception e) {
+            // No real problem, I guess
+        }
     }
 
 
@@ -4867,11 +4880,7 @@ public final class FIDO2Applet extends Applet implements ExtendedLength {
                         JCSystem.abortTransaction();
                     }
                 }
-                try {
-                    JCSystem.requestObjectDeletion();
-                } catch (Exception e) {
-                    // No real problem, I guess
-                }
+                attemptToFreeMemory();
                 break;
             }
         }
@@ -4993,6 +5002,8 @@ public final class FIDO2Applet extends Applet implements ExtendedLength {
                     } finally {
                         if (ok) {
                             JCSystem.commitTransaction();
+
+                            attemptToFreeMemory();
                         } else {
                             JCSystem.abortTransaction();
                         }
@@ -5010,6 +5021,8 @@ public final class FIDO2Applet extends Applet implements ExtendedLength {
                     } finally {
                         if (ok) {
                             JCSystem.commitTransaction();
+
+                            attemptToFreeMemory();
                         } else {
                             JCSystem.abortTransaction();
                         }
@@ -5507,17 +5520,17 @@ public final class FIDO2Applet extends Applet implements ExtendedLength {
         } finally {
             if (ok) {
                 JCSystem.commitTransaction();
-                sendErrorByte(apdu, FIDOConstants.CTAP2_OK);
             } else {
                 JCSystem.abortTransaction();
+            }
+
+            attemptToFreeMemory();
+
+            if (ok) {
+                sendErrorByte(apdu, FIDOConstants.CTAP2_OK);
+            } else {
                 throwException(ISO7816.SW_DATA_INVALID);
             }
-        }
-
-        try {
-            JCSystem.requestObjectDeletion();
-        } catch (Exception e) {
-            // No problem, really
         }
     }
 
@@ -7240,11 +7253,7 @@ public final class FIDO2Applet extends Applet implements ExtendedLength {
 
             availableMem = JCSystem.getAvailableMemory(JCSystem.MEMORY_TYPE_TRANSIENT_DESELECT);
 
-            try {
-                JCSystem.requestObjectDeletion();
-            } catch (Exception e) {
-                // Whoops. Wasted some flash, I guess.
-            }
+            attemptToFreeMemory();
         }
 
         short targetMemAmount = 99; // 96+3=99 bytes desired RAM buffer left over, enough room for one 32-byte HMAC
